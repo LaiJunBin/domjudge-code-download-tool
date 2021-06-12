@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>DOMJudge code dump demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.1/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-+0n0xVW2eSR5OomGNYDnhzAbDsOXxcvSN1TPprVMTNDbiYZCxYbOOl7+AMvyTG2x" crossorigin="anonymous">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        .jumbotron {
+            position: relative;
+
+            width: 100%;
+            min-height: 100vh;
+
+            padding: 2rem 1rem;
+            padding-top: 100px;
+        }
+
+        .cover-image {
+            position: absolute;
+            left: 0;
+            top: 0;
+            z-index: -1;
+
+            background: #36a8f9;
+            width: 100%;
+            height: 100%;
+        }
+
+        .jumbotron-body {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            padding: 0 100px;
+
+            color: #fff;
+        }
+
+        .form-group {
+            width: 100%;
+        }
+
+        .programs {
+            border-radius: 5px;
+        }
+
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 9999;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            width: 100vw;
+            height: 100vh;
+            background-color: #ddda;
+        }
+
+        #loading > .box {
+            width: 20px;
+            height: 20px;
+            background-color: #39f;
+            border-radius: 50%;
+            margin: 5px;
+
+            animation: loading 1s infinite alternate;
+        }
+
+        #loading > .box:nth-child(1) {
+            animation-delay: -.6s;
+        }
+
+        #loading > .box:nth-child(2) {
+            animation-delay: -.3s;
+        }
+
+        @keyframes loading {
+            from {
+                transform: translateY(0px);
+            }
+
+            to {
+                transform: translateY(20px);
+            }
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div id="loading" v-if="loading">
+        <div class="box"></div>
+        <div class="box"></div>
+        <div class="box"></div>
+    </div>
+    <nav class="navbar navbar-expand-lg navbar-light position-fixed w-100"
+         style="background-color: #f6f6f6; z-index: 999;">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                Domjudge code download
+            </a>
+        </div>
+    </nav>
+
+    <section class="jumbotron">
+        <div class="cover-image"></div>
+        <div class="jumbotron-body">
+            <div class="form-group">
+                <h3 style="user-select:none;">Select contest</h3>
+                <select class="form-select" v-model="contest">
+                    <option v-for="contest in contests" :value="contest">{{ contest.name }}</option>
+                </select>
+            </div>
+            <div class="form-group mt-2">
+                <button class="btn btn-success w-100" @click="dump()">Download</button>
+            </div>
+
+            <section class="programs mt-3 bg-white text-secondary p-3">
+                <h2>Programs</h2>
+                <hr>
+                <h4 v-if="programs.length === 0">
+                    Empty.
+                </h4>
+                <table class="table table-hover" v-else>
+                    <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Contest</th>
+                        <th>Progress</th>
+                        <th>Operation</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="(program, index) in programs">
+                        <td>{{ index + 1}}</td>
+                        <td>{{ program.contest.name }}</td>
+                        <td>
+                            <a v-if="program.downloadUrl" :href="program.downloadUrl"
+                               :download="`${program.contest.name}.zip`">Download</a>
+                            <p v-else-if="program.total === -1">Wait..</p>
+                            <p v-else-if="program.total === 0">No submissions in this contest.</p>
+                            <p v-else>Processing: {{ program.current }} / {{program.total }}</p>
+                        </td>
+                        <td>
+                            <button v-if="!program.downloadUrl" class="btn btn-danger" @click="cancel(program)">
+                                &times;
+                            </button>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </section>
+
+        </div>
+    </section>
+
+</div>
+
+<script>
+    const API_URL_PREFIX = 'http://localhost:8000';
+    const WS_URL = 'ws://localhost:8000/ws';
+
+    class Program {
+        constructor(contest) {
+            this.id = null;
+            this.contest = contest;
+            this.total = -1;
+            this.current = 0;
+            this.downloadUrl = '';
+            this.socket = null;
+        }
+
+        init() {
+            return new Promise(resolve => {
+                this.socket = new WebSocket(WS_URL);
+                this.socket.onmessage = e => {
+                    let jsonData = JSON.parse(e.data);
+                    switch (jsonData.type) {
+                        case 'init':
+                            this.id = jsonData.data;
+                            resolve();
+                            break;
+                        case 'processing':
+                            this.current = jsonData.data;
+                            break;
+                        case 'success':
+                            this.downloadUrl = jsonData.data;
+                            break;
+                    }
+                }
+            });
+        }
+
+        run() {
+            this.init().then(() => {
+                fetch(`${API_URL_PREFIX}/contests/${this.contest.id}`).then(res => res.json()).then(contest => {
+                    this.total = contest.submission_length;
+                    if (this.total === 0) {
+                        return;
+                    }
+
+                    fetch(`${API_URL_PREFIX}/contests/${contest.id}/sources?program_id=${this.id}`)
+                });
+            });
+        }
+    }
+
+    const app = new Vue({
+        el: '#app',
+        data: {
+            loading: true,
+            contests: [],
+            contest: null,
+            socket: null,
+            programs: [],
+        },
+        methods: {
+            initContests() {
+                fetch(`${API_URL_PREFIX}/contests`).then(res => res.json()).then(contests => {
+                    this.contests = contests;
+                    this.contest = this.contests[0];
+                    this.loading = false;
+                });
+            },
+
+            dump() {
+                let program = new Program(this.contest);
+                this.programs.push(program);
+                program.run();
+            },
+
+            cancel(program) {
+                program.socket.close();
+                this.programs.splice(this.programs.indexOf(program), 1);
+            }
+        },
+        mounted() {
+            this.initContests();
+
+            window.addEventListener('beforeunload', e => {
+                if (this.programs.some(program => !program.downloadUrl && program.total > 0)) {
+                    e.returnValue = '';
+                }
+            })
+        },
+    });
+</script>
+</body>
+</html>
