@@ -73,6 +73,10 @@ async def run_get_contest_source_code(
 
         id = submission['id']
         team = teams[submission['team_id']]
+        name = team[0]
+        if team[1]:
+            name += '_' + team[1]
+
         problem = problems[submission['problem_id']]
         extension = languages[submission['language_id']]
         judge_type = judgements[submission['id']]
@@ -80,7 +84,7 @@ async def run_get_contest_source_code(
             request.get(f'/api/v4/contests/{contest["id"]}/submissions/{submission["id"]}/source-code')[0]['source']
         )
 
-        filename = f'{id}_{team}_{judge_type}.{extension}'
+        filename = f'{id}_{name}_{judge_type}.{extension}'
         zip.writestr(f'{problem}/{filename}', source.encode())
 
         if socket:
@@ -126,7 +130,7 @@ async def get_contest_source_code(contest_id: int, program_id: Optional[str] = '
     }
 
     teams = request.get(f'/api/v4/contests/{contest_id}/teams')
-    teams = {team['id']: team['name'] for team in teams}
+    teams = {team['id']: [team['name'], team['display_name']] for team in teams}
 
     problems = request.get(f'/api/v4/contests/{contest_id}/problems')
     problems = {problem['id']: problem['name'] for problem in problems}
