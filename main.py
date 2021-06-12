@@ -8,7 +8,7 @@ from io import BytesIO
 from typing import Optional
 import threading
 import asyncio
-
+from urllib.parse import quote
 
 app = FastAPI()
 app.add_middleware(
@@ -20,6 +20,7 @@ app.add_middleware(
 )
 
 sockets = {}
+
 
 @app.websocket('/ws')
 async def websocket_endpoint(socket: WebSocket):
@@ -65,7 +66,7 @@ def get_contest(contest_id: int):
 
 
 async def run_get_contest_source_code(
-        contest, teams, problems, languages, judgements, submissions, socket
+        contest, teams, problems, languages, judgements, submissions, socket, groupType
 ):
     zip = zipstream.ZipFile()
     for i in range(len(submissions)):
@@ -84,8 +85,14 @@ async def run_get_contest_source_code(
             request.get(f'/api/v4/contests/{contest["id"]}/submissions/{submission["id"]}/source-code')[0]['source']
         )
 
-        filename = f'{id}_{name}_{judge_type}.{extension}'
-        zip.writestr(f'{problem}/{filename}', source.encode())
+        if groupType == "team":
+            path = f'{name}/{id}_{problem}_{judge_type}.{extension}'
+            filename = f'{contest["name"]}_by_team'
+        else:
+            path = f'{problem}/{id}_{name}_{judge_type}.{extension}'
+            filename = f'{contest["name"]}_by_problem'
+
+        zip.writestr(path, source.encode())
 
         if socket:
             try:
@@ -111,13 +118,13 @@ async def run_get_contest_source_code(
         return
 
     return StreamingResponse(zip_file, headers={
-        'Content-Disposition': f'attachment; filename={contest["name"]}.zip',
+        'Content-Disposition': f'attachment; filename={quote(filename)}.zip',
         'Content-Type': 'application/zip'
     })
 
 
 @app.get('/contests/{contest_id}/sources')
-async def get_contest_source_code(contest_id: int, program_id: Optional[str] = ''):
+async def get_contest_source_code(contest_id: int, program_id: Optional[str] = '', groupType: Optional[str] = ''):
     socket = sockets.get(program_id, None)
     contest = get_contest(contest_id)
     if contest is None:
@@ -153,7 +160,7 @@ async def get_contest_source_code(contest_id: int, program_id: Optional[str] = '
             'message': 'No submission record for this contest.'
         }, 404)
 
-    args = (contest, teams, problems, languages, judgements, submissions, socket)
+    args = (contest, teams, problems, languages, judgements, submissions, socket, groupType)
     if socket:
         thread = threading.Thread(target=asyncio.run, args=(run_get_contest_source_code(*args),))
         thread.start()

@@ -120,6 +120,13 @@
         <div class="cover-image"></div>
         <div class="jumbotron-body">
             <div class="form-group">
+                <h3 style="user-select:none;">Select group by</h3>
+                <select class="form-select" v-model="groupType">
+                    <option value="problem">Group by Problem</option>
+                    <option value="team">Group by Team</option>
+                </select>
+            </div>
+            <div class="form-group mt-2">
                 <h3 style="user-select:none;">Select contest</h3>
                 <select class="form-select" v-model="contest">
                     <option v-for="contest in contests" :value="contest">{{ contest.name }}</option>
@@ -139,6 +146,7 @@
                     <thead>
                     <tr>
                         <th>#</th>
+                        <th>Group by</th>
                         <th>Contest</th>
                         <th>Progress</th>
                         <th>Operation</th>
@@ -147,10 +155,11 @@
                     <tbody>
                     <tr v-for="(program, index) in programs">
                         <td>{{ index + 1}}</td>
+                        <td>{{ program.groupType.capitalize() }}</td>
                         <td>{{ program.contest.name }}</td>
                         <td>
                             <a v-if="program.downloadUrl" :href="program.downloadUrl"
-                               :download="`${program.contest.name}.zip`">Download</a>
+                               :download="`${program.contest.name}_by_${program.groupType.capitalize()}.zip`">Download</a>
                             <p v-else-if="program.total === -1">Wait..</p>
                             <p v-else-if="program.total === 0">No submissions in this contest.</p>
                             <p v-else>Processing: {{ program.current }} / {{program.total }}</p>
@@ -175,12 +184,13 @@
     const WS_URL = 'ws://localhost:8000/ws';
 
     class Program {
-        constructor(contest) {
+        constructor(contest, groupType) {
             this.id = null;
             this.contest = contest;
             this.total = -1;
             this.current = 0;
             this.downloadUrl = '';
+            this.groupType = groupType;
             this.socket = null;
         }
 
@@ -213,7 +223,7 @@
                         return;
                     }
 
-                    fetch(`${API_URL_PREFIX}/contests/${contest.id}/sources?program_id=${this.id}`)
+                    fetch(`${API_URL_PREFIX}/contests/${contest.id}/sources?program_id=${this.id}&groupType=${this.groupType}`)
                 });
             });
         }
@@ -227,6 +237,7 @@
             contest: null,
             socket: null,
             programs: [],
+            groupType: 'problem'
         },
         methods: {
             initContests() {
@@ -238,7 +249,7 @@
             },
 
             dump() {
-                let program = new Program(this.contest);
+                let program = new Program(this.contest, this.groupType);
                 this.programs.push(program);
                 program.run();
             },
@@ -258,6 +269,10 @@
             })
         },
     });
+
+    String.prototype.capitalize = function () {
+        return this.charAt(0).toUpperCase() + this.slice(1)
+    }
 </script>
 </body>
 </html>
