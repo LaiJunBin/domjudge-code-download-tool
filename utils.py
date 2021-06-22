@@ -1,4 +1,4 @@
-import base64, random, string
+import base64, random, string, json
 
 
 def base64_encoding(message):
@@ -10,6 +10,13 @@ def base64_encoding(message):
 
 def file2blob(file):
     base64_bytes = base64.b64encode(file.read())
+    base64_message = base64_bytes.decode('ascii')
+    return base64_message
+
+
+def dict2blob(dict):
+    json_str = json.dumps(dict).encode()
+    base64_bytes = base64.b64encode(json_str)
     base64_message = base64_bytes.decode('ascii')
     return base64_message
 
