@@ -120,6 +120,13 @@
         <div class="cover-image"></div>
         <div class="jumbotron-body">
             <div class="form-group">
+                <h3 style="user-select:none;">Select format</h3>
+                <select class="form-select" v-model="format">
+                    <option value="zip">Zip</option>
+                    <option value="json">Json</option>
+                </select>
+            </div>
+            <div class="form-group mt-2" v-if="format==='zip'">
                 <h3 style="user-select:none;">Select group by</h3>
                 <select class="form-select" v-model="groupType">
                     <option value="problem">Group by Problem</option>
@@ -146,6 +153,7 @@
                     <thead>
                     <tr>
                         <th>#</th>
+                        <th>Format</th>
                         <th>Group by</th>
                         <th>Contest</th>
                         <th>Progress</th>
@@ -155,14 +163,20 @@
                     <tbody>
                     <tr v-for="(program, index) in programs">
                         <td>{{ index + 1}}</td>
-                        <td>{{ program.groupType.capitalize() }}</td>
+                        <td>{{ program.format.capitalize() }}</td>
+                        <td>{{ program.format === 'zip' ? program.groupType.capitalize() : '' }}</td>
                         <td>{{ program.contest.name }}</td>
                         <td>
-                            <a v-if="program.downloadUrl" :href="program.downloadUrl"
-                               :download="`${program.contest.name}_by_${program.groupType.capitalize()}.zip`">Download</a>
-                            <p v-else-if="program.total === -1">Wait..</p>
-                            <p v-else-if="program.total === 0">No submissions in this contest.</p>
-                            <p v-else>Processing: {{ program.current }} / {{program.total }}</p>
+                            <p v-if="program.error">{{ program.error }}</p>
+                            <template v-else>
+                                <a v-if="program.format === 'zip' && program.downloadUrl" :href="program.downloadUrl"
+                                   :download="`${program.contest.name}_by_${program.groupType.capitalize()}.zip`">Download</a>
+                                <a v-if="program.format === 'json' && program.downloadUrl" :href="program.downloadUrl"
+                                   :download="`${program.contest.name}.json`">Download</a>
+                                <p v-else-if="program.total === -1">Wait..</p>
+                                <p v-else-if="program.total === 0">No submissions in this contest.</p>
+                                <p v-else>Processing: {{ program.current }} / {{program.total }}</p>
+                            </template>
                         </td>
                         <td>
                             <button v-if="!program.downloadUrl" class="btn btn-danger" @click="cancel(program)">
@@ -184,14 +198,16 @@
     const WS_URL = 'ws://localhost:8000/ws';
 
     class Program {
-        constructor(contest, groupType) {
+        constructor(contest, groupType, format) {
             this.id = null;
             this.contest = contest;
             this.total = -1;
             this.current = 0;
             this.downloadUrl = '';
             this.groupType = groupType;
+            this.format = format;
             this.socket = null;
+            this.error = null;
         }
 
         init() {
@@ -211,6 +227,11 @@
                             this.downloadUrl = jsonData.data;
                             break;
                     }
+                };
+
+                this.socket.onerror = e => {
+                    console.log(e);
+                    this.error = 'Error';
                 }
             });
         }
@@ -223,7 +244,14 @@
                         return;
                     }
 
-                    fetch(`${API_URL_PREFIX}/contests/${contest.id}/sources?program_id=${this.id}&groupType=${this.groupType}`)
+                    switch (this.format) {
+                        case 'zip':
+                            fetch(`${API_URL_PREFIX}/contests/${contest.id}/sources?program_id=${this.id}&groupType=${this.groupType}`);
+                            break;
+                        case 'json':
+                            fetch(`${API_URL_PREFIX}/contests/${contest.id}/sources/json?program_id=${this.id}`);
+                            break;
+                    }
                 });
             });
         }
@@ -233,6 +261,7 @@
         el: '#app',
         data: {
             loading: true,
+            format: 'zip',
             contests: [],
             contest: null,
             socket: null,
@@ -249,7 +278,7 @@
             },
 
             dump() {
-                let program = new Program(this.contest, this.groupType);
+                let program = new Program(this.contest, this.groupType, this.format);
                 this.programs.push(program);
                 program.run();
             },

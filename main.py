@@ -1,7 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import request
-from utils import base64_decode, random_ascii_letters, file2blob
+from utils import base64_decode, random_ascii_letters, file2blob, dict2blob
 import zipstream
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
 from io import BytesIO
@@ -166,3 +166,96 @@ async def get_contest_source_code(contest_id: int, program_id: Optional[str] = '
         thread.start()
     else:
         return await run_get_contest_source_code(*args)
+
+
+async def run_get_contest_source_code_json(
+        contest, teams, problems, languages, judgements, submissions, socket
+):
+    output = []
+    for i in range(len(submissions)):
+        submission = submissions[i]
+
+        id = submission['id']
+        team = teams[submission['team_id']]
+        name = team[0]
+        if team[1]:
+            name += '_' + team[1]
+
+        problem = problems[submission['problem_id']]
+        extension = languages[submission['language_id']]
+        judge_type = judgements[submission['id']]
+        source = request.get(f'/api/v4/contests/{contest["id"]}/submissions/{submission["id"]}/source-code')[0][
+            'source']
+
+        output.append({
+            'id': id,
+            'name': name,
+            'problem': problem,
+            'extension': extension,
+            'judge_type': judge_type['type'],
+            'runtime': judge_type['runtime'],
+            'source': source
+        })
+
+        if socket:
+            try:
+                await socket.send_json({
+                    'type': 'processing',
+                    'data': i + 1
+                })
+            except:
+                return {}
+
+    if socket:
+        await socket.send_json({
+            'type': 'success',
+            'data': 'data:application/json;base64,' + dict2blob(output)
+        })
+        return
+
+    return JSONResponse(output)
+
+
+@app.get('/contests/{contest_id}/sources/json')
+async def get_contest_source_code(contest_id: int, program_id: Optional[str] = ''):
+    socket = sockets.get(program_id, None)
+    contest = get_contest(contest_id)
+    if contest is None:
+        return JSONResponse({
+            'message': 'The contest not found.'
+        }, 404)
+
+    default_extensions = {
+        'python3': 'py'
+    }
+
+    teams = request.get(f'/api/v4/contests/{contest_id}/teams')
+    teams = {team['id']: [team['name'], team['display_name']] for team in teams}
+
+    problems = request.get(f'/api/v4/contests/{contest_id}/problems')
+    problems = {problem['id']: problem['name'] for problem in problems}
+
+    languages = request.get(f'/api/v4/contests/{contest_id}/languages')
+    languages = {
+        **{lang['id']: lang['extensions'][0] for lang in languages},
+        **default_extensions
+    }
+
+    judgements = request.get(f'/api/v4/contests/{contest_id}/judgements')
+    judgements = {
+        judgement['submission_id']: {'type': judgement['judgement_type_id'], 'runtime': judgement['max_run_time']}
+        for judgement in judgements if judgement['judgement_type_id']
+    }
+
+    submissions = request.get(f'/api/v4/contests/{contest_id}/submissions')
+    if (len(submissions) == 0):
+        return JSONResponse({
+            'message': 'No submission record for this contest.'
+        }, 404)
+
+    args = (contest, teams, problems, languages, judgements, submissions, socket)
+    if socket:
+        thread = threading.Thread(target=asyncio.run, args=(run_get_contest_source_code_json(*args),))
+        thread.start()
+    else:
+        return await run_get_contest_source_code_json(*args)
