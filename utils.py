@@ -22,7 +22,17 @@ def dict2blob(dict):
 
 
 def base64_decode(b64data):
-    return base64.b64decode(b64data).decode('utf-8')
+    try:
+        return base64.b64decode(b64data).decode('utf-8')
+    except:
+        pass
+
+    try:
+        return base64.b64decode(b64data).decode('gb2312')
+    except:
+        pass
+
+    return base64.b64decode(b64data)
 
 
 def random_ascii_letters(length=6):

@@ -84,6 +84,8 @@ async def run_get_contest_source_code(
         source = base64_decode(
             request.get(f'/api/v4/contests/{contest["id"]}/submissions/{submission["id"]}/source-code')[0]['source']
         )
+        if type(source) != bytes:
+            source = source.encode()
 
         if groupType == "team":
             path = f'{name}/{id}_{problem}_{judge_type}.{extension}'
@@ -92,7 +94,7 @@ async def run_get_contest_source_code(
             path = f'{problem}/{id}_{name}_{judge_type}.{extension}'
             filename = f'{contest["name"]}_by_problem'
 
-        zip.writestr(path, source.encode())
+        zip.writestr(path, source)
 
         if socket:
             try:
